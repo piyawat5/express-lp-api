@@ -1,0 +1,177 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+    shadowDatabaseUrl = env("SHADOW_DATABASE_URL") 
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  firstName     String?
+  lastName      String?
+  avatar        String?
+  password  String?
+  role      UserRole @default(USER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  status    Boolean @default(true)
+
+  action Action[]
+  inviteUser InviteUser[]
+  canEditTempUserId CanEditTempUserId[]
+}
+
+model CanEditTempUserId {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String
+  tempUser TempUser @relation(fields: [tempUserId], references: [id], onDelete: Cascade)
+  tempUserId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TempUser {
+  id        String   @id @default(uuid())
+  nickname  String
+  birthdate DateTime
+  canEdit CanEditTempUserId[]
+  action Action[]
+  inviteUser InviteUser[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Action {
+  id        String   @id @default(uuid())
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId    String?
+  tempUser TempUser? @relation(fields: [tempUserId], references: [id], onDelete: SetNull)
+  tempUserId String?
+  actionTypeId String
+  actionType   Config      @relation("ActionType", fields: [actionTypeId], references: [id], onDelete: Cascade)
+  locationId   String
+  location     Config     @relation("ActionLocation", fields: [locationId], references: [id], onDelete: Cascade)
+  startDate DateTime?
+  endDate   DateTime?
+  startTime String?
+  endTime   String?
+  inviteUser InviteUser[]
+  attachfile Attachfile[]
+  notiActionId String?
+  notiAction NotiAction? @relation(fields: [notiActionId], references: [id], onDelete: SetNull)
+  actionStatusId String
+  actionStatus ActionStatus @relation(fields: [actionStatusId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+ scheduleRepeat   ScheduleRepeat?
+}
+
+model InviteUser {
+  id        String   @id @default(uuid())
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId    String?
+  tempUser TempUser? @relation(fields: [tempUserId], references: [id], onDelete: SetNull)
+  tempUserId String?
+  action    Action     @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  actionId  String
+  inviteStatusId String
+  inviteStatus InviteStatus @relation(fields: [inviteStatusId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+   updatedAt DateTime @updatedAt
+}
+
+model NotiAction {
+  id        String   @id @default(uuid())
+  action Action[]
+  value     String
+  name     String
+  createdAt DateTime @default(now())
+}
+
+model Config {
+  id        String   @id @default(uuid())
+  value     String
+  name      String   @unique
+  configTypeId String
+  configType ConfigType @relation(fields: [configTypeId], references: [id], onDelete: Cascade)
+ actionType   Action[]   @relation("ActionType")
+  location     Action[]   @relation("ActionLocation")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ConfigType {
+  id        String   @id @default(uuid())
+  value     String
+  name      String   @unique
+  config Config[]
+  createdAt DateTime @default(now())
+   updatedAt DateTime @updatedAt
+}
+
+model ScheduleRepeatType {
+  id        String   @id @default(uuid())
+  value     String
+  name      String   @unique
+  scheduleRepeat ScheduleRepeat[]
+  createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+}
+
+model ScheduleRepeat {
+  id        String   @id @default(uuid())
+  action    Action     @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  actionId  String   @unique
+  scheduleRepeatType ScheduleRepeatType @relation(fields: [scheduleRepeatTypeId], references: [id], onDelete: Cascade)
+  scheduleRepeatTypeId String
+  month String?
+  date String?
+  day String?
+  timeStart String?
+  timeEnd String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ActionStatus {
+  id        String   @id @default(uuid())
+  value     String
+  name      String   @unique
+  action Action[]
+  createdAt DateTime @default(now())
+}
+
+model InviteStatus {
+  id        String   @id @default(uuid())
+  value     String
+  name      String   @unique
+  inviteUser InviteUser[]
+  createdAt DateTime @default(now())
+   updatedAt DateTime @updatedAt
+}
+
+model Attachfile {
+  id        String   @id @default(uuid())
+  action    Action     @relation(fields: [actionId], references: [id], onDelete: Cascade)
+  actionId  String
+  fileUrl  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
