@@ -57,4 +57,13 @@ router.use("/invite-statuses", inviteStatusRoute);
 router.use("/noti-actions", notiActionRoute);
 router.use("/schedule-repeat-types", scheduleRepeatTypeRoute);
 
+// ------------- upload --------------
+router.post("/single", verifyToken, upload.single("image"), uploadImage);
+router.post(
+  "/multiple",
+  verifyToken,
+  upload.array("images", 10),
+  uploadMultipleImages
+);
+
 export default router;

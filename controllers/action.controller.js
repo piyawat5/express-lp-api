@@ -1,6 +1,44 @@
 import createError from "../utils/createError.js";
 import { checkTimeOverlap } from "../utils/timeOverlap.js";
 import prisma from "../config/prisma.js";
+import nodemailer from "nodemailer";
+
+const transporter = nodemailer.createTransport({
+  host: "thsv35.hostatom.com", // หรือ mail.yourdomain.com
+  port: 587, // หรือ 465
+  secure: false, // true ถ้าใช้ 465
+  auth: {
+    user: "bot01@family-sivarom.com",
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+const sendOTPEmail = async (email, otp) => {
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: "แจ้งเตือนกิจกรรมของคุณบนในระบบ Life Plan",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2>ชื่อกิจกรรม</h2>
+        <div>เรียน ผู้ใช้ที่น่ารัก,</div>
+        <p>ฉันหวังว่าคุณจะสบายดี! นี่คือการแจ้งเตือนเกี่ยวกับกิจกรรมที่กำลังจะมาถึงของคุณบนระบบ Life Plan:</p>
+      </div>
+    `,
+  };
+
+  return transporter.sendMail(mailOptions);
+};
+
+export const testMail = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+    await sendOTPEmail(email, otp);
+    res.json({ message: "ส่งอีเมล OTP สำเร็จ" });
+  } catch (err) {
+    next(err);
+  }
+};
 
 export const getActions = async (req, res, next) => {
   try {
