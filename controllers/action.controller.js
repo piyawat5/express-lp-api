@@ -2,6 +2,7 @@ import createError from "../utils/createError.js";
 import { checkTimeOverlap } from "../utils/timeOverlap.js";
 import prisma from "../config/prisma.js";
 import nodemailer from "nodemailer";
+import { sendLineMessage } from "../utils/lineNotify.js";
 
 const transporter = nodemailer.createTransport({
   host: "thsv35.hostatom.com", // หรือ mail.yourdomain.com
@@ -334,6 +335,34 @@ export const createAction = async (req, res, next) => {
         },
       },
     });
+
+    const notiAction = await prisma.notiAction.findUnique({
+      where: {
+        id: notiActionId,
+      },
+    });
+
+    // ถ้าไม่เจอจะได้ null
+    if (!notiAction) {
+      return next(createError(404, "NotiAction not found"));
+    }
+
+    if (notiAction.value === "LINE") {
+      // ส่งไลน์
+      let message = `📱Event ใหม่ถูกสร้าง\n\n`;
+      message += `👤โดย: คุณ${action.user.firstName}\n`;
+      message += `Title: ${action.actionType.name}\n`;
+      message += `สถานที่: ${action.location.name}\n`;
+      message += `วัน/เวลาเริ่ม: ${new Date(action.startDate).toLocaleString(
+        "th-TH"
+      )} ${action.startTime} น.\n`;
+      message += `วัน/เวลาสิ้นสุด: ${new Date(action.endDate).toLocaleString(
+        "th-TH"
+      )} ${action.endTime} น.\n`;
+
+      await sendLineMessage(message);
+    } else if (notiAction.value === "EMAIL") {
+    }
 
     res.status(201).json(action);
   } catch (err) {
