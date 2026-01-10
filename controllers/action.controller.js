@@ -539,9 +539,10 @@ export const checkAndNotifyDailyActions = async () => {
       return res.status(404).json({ message: "ไม่มีกิจกรรมในวันนี้" });
     }
 
+    let message = `📱แจ้งเตือน Event ในวันนี้\n\n`;
+
     actions.forEach((action) => {
       if (action.notiAction.value === "LINE") {
-        let message = `📱แจ้งเตือน Event ในวันนี้\n\n`;
         message += `Title: ${action.actionType.name}\n`;
         message += `สถานที่: ${action.location.name}\n`;
         message += `👤โดย: คุณ${action.user.firstName}\n`;
