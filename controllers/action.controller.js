@@ -353,12 +353,12 @@ export const createAction = async (req, res, next) => {
       message += `👤โดย: คุณ${action.user.firstName}\n`;
       message += `Title: ${action.actionType.name}\n`;
       message += `สถานที่: ${action.location.name}\n`;
-      message += `วัน/เวลาเริ่ม: ${new Date(action.startDate).toLocaleString(
-        "th-TH"
-      )} ${action.startTime} น.\n`;
-      message += `วัน/เวลาสิ้นสุด: ${new Date(action.endDate).toLocaleString(
-        "th-TH"
-      )} ${action.endTime} น.\n`;
+      message += `วัน/เวลาเริ่ม: ${
+        new Date(action.startDate).toLocaleString("th-TH").split(" ")?.[0]
+      } ${action.startTime} น.\n`;
+      message += `วัน/เวลาสิ้นสุด: ${
+        new Date(action.endDate).toLocaleString("th-TH").split(" ")?.[0]
+      } ${action.endTime} น.\n`;
 
       await sendLineMessage(message);
     } else if (notiAction.value === "EMAIL") {
@@ -502,5 +502,62 @@ export const deleteAction = async (req, res, next) => {
       return next(createError(404, "ไม่พบกิจกรรม"));
     }
     next(err);
+  }
+};
+
+// ฟังก์ชันสำหรับ cronjob ตรวจสอบและแจ้งเตือน actions ประจำวัน
+export const checkAndNotifyDailyActions = async () => {
+  try {
+    // กำหนดช่วงเวลาของวันนี้ (00:00:00 - 23:59:59)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // ค้นหา actions ที่มีในวันนี้
+    const actions = await prisma.action.findMany({
+      where: {
+        startDate: {
+          gte: today,
+          lt: tomorrow,
+        },
+      },
+      include: {
+        user: true,
+        actionType: true,
+        location: true,
+        notiAction: true,
+      },
+      orderBy: {
+        startTime: "asc",
+      },
+    });
+
+    // ถ้าไม่มี action ในวันนี้ ก็จบการทำงาน
+    if (actions.length === 0) {
+      return res.status(404).json({ message: "ไม่มีกิจกรรมในวันนี้" });
+    }
+
+    actions.forEach((action) => {
+      if (action.notiAction.value === "LINE") {
+        let message = `📱แจ้งเตือน Event ในวันนี้\n\n`;
+        message += `Title: ${action.actionType.name}\n`;
+        message += `สถานที่: ${action.location.name}\n`;
+        message += `👤โดย: คุณ${action.user.firstName}\n`;
+        message += `วัน/เวลาเริ่ม: ${
+          new Date(action.startDate).toLocaleString("th-TH").split(" ")?.[0]
+        } ${action.startTime} น.\n`;
+        message += `วัน/เวลาสิ้นสุด: ${
+          new Date(action.endDate).toLocaleString("th-TH").split(" ")?.[0]
+        } ${action.endTime} น.\n\n`;
+      }
+    });
+
+    await sendLineMessage(message);
+
+    return res.status(200).json({ message: "แจ้งเตือนสำเร็จ" });
+  } catch (err) {
+    return next(createError(500, err));
   }
 };
