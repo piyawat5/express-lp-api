@@ -7,6 +7,7 @@ import {
   deleteAction,
   testMail,
   checkAndNotifyDailyActions,
+  checkAndNotifyUpcomingActions,
 } from "../controllers/action.controller.js";
 
 const router = express.Router();
@@ -17,6 +18,7 @@ router.post("/", createAction);
 router.put("/:id", updateAction);
 router.delete("/:id", deleteAction);
 router.get("/notification/today", checkAndNotifyDailyActions);
+router.get("/notification/upcoming", checkAndNotifyUpcomingActions);
 router.post("/test-email", testMail);
 
 export default router;
