@@ -680,15 +680,14 @@ export const checkAndNotifyUpcomingActions = async (req, res, next) => {
             (actionStartTime - now) / (60 * 1000)
           );
 
-          const emailContent = `เรียน คุณ${action.user.firstName}
+          const emailContent = `เรียน คุณ${action.user.firstName}\n\n
 
-⏰ กิจกรรมของคุณใกล้เริ่มแล้ว!
+⏰ กิจกรรมของคุณใกล้เริ่มแล้ว!\n
 
-📋 กิจกรรม: ${action.actionType.name}
-⏱️ เหลือเวลาอีก: ${minutesUntilStart} นาที
-📍 สถานที่: ${action.location.name}
-🕐 เวลา: ${action.startTime} - ${action.endTime} น.
-${action.description ? `\n📝 รายละเอียด: ${action.description}` : ""}
+📋 กิจกรรม: ${action.actionType.name}\n
+⏱️ เหลือเวลาอีก: ${minutesUntilStart} นาที\n
+📍 สถานที่: ${action.location.name}\n
+🕐 เวลา: ${action.startTime} - ${action.endTime} น.\n\n
 
 กรุณาเตรียมตัวให้พร้อม ขอให้มีความสุขกับกิจกรรม!`;
           await sendEmail(action.user.email, emailContent);
