@@ -213,6 +213,7 @@ export const createAction = async (req, res, next) => {
       endDate,
       startTime,
       endTime,
+      description,
       inviteUsers,
       attachfiles,
       notiActionId,
@@ -225,8 +226,8 @@ export const createAction = async (req, res, next) => {
       return next(
         createError(
           400,
-          "กรุณาระบุ actionTypeId, locationId และ actionStatusId"
-        )
+          "กรุณาระบุ actionTypeId, locationId และ actionStatusId",
+        ),
       );
     }
 
@@ -238,7 +239,7 @@ export const createAction = async (req, res, next) => {
     // ห้ามมีทั้ง userId และ tempUserId
     if (userId && tempUserId) {
       return next(
-        createError(400, "ไม่สามารถระบุทั้ง userId และ tempUserId พร้อมกัน")
+        createError(400, "ไม่สามารถระบุทั้ง userId และ tempUserId พร้อมกัน"),
       );
     }
 
@@ -246,7 +247,7 @@ export const createAction = async (req, res, next) => {
     if (scheduleRepeat) {
       if (!scheduleRepeat.scheduleRepeatTypeId) {
         return next(
-          createError(400, "กรุณาระบุ scheduleRepeatTypeId ใน scheduleRepeat")
+          createError(400, "กรุณาระบุ scheduleRepeatTypeId ใน scheduleRepeat"),
         );
       }
 
@@ -296,6 +297,7 @@ export const createAction = async (req, res, next) => {
         endTime: endTime || null,
         notiActionId: notiActionId || null,
         actionStatusId,
+        description: description || null,
         ...(scheduleRepeat && {
           scheduleRepeat: {
             create: {
@@ -390,6 +392,7 @@ export const updateAction = async (req, res, next) => {
       actionTypeId,
       locationId,
       startDate,
+      description,
       endDate,
       startTime,
       endTime,
@@ -461,6 +464,7 @@ export const updateAction = async (req, res, next) => {
       data: {
         ...(actionTypeId && { actionTypeId }),
         ...(locationId && { locationId }),
+        ...(description !== undefined && { description }),
         ...(startDate !== undefined && {
           startDate: startDate ? new Date(startDate) : null,
         }),
@@ -634,7 +638,7 @@ export const checkAndNotifyUpcomingActions = async (req, res, next) => {
 
     // กรอง actions ที่ต้องแจ้งเตือนผ่าน LINE
     const lineActions = upcomingActions.filter(
-      (action) => action.notiAction?.value === "LINE"
+      (action) => action.notiAction?.value === "LINE",
     );
 
     // ส่งการแจ้งเตือน LINE (รวมทุก action ใน message เดียว)
@@ -649,7 +653,7 @@ export const checkAndNotifyUpcomingActions = async (req, res, next) => {
 
         // คำนวณเวลาที่เหลือ (นาที)
         const minutesUntilStart = Math.round(
-          (actionStartTime - now) / (60 * 1000)
+          (actionStartTime - now) / (60 * 1000),
         );
 
         message += `${index + 1}. ${action.actionType.name}\n`;
@@ -666,7 +670,7 @@ export const checkAndNotifyUpcomingActions = async (req, res, next) => {
 
     // ส่งการแจ้งเตือน EMAIL (ถ้ามี)
     const emailActions = upcomingActions.filter(
-      (action) => action.notiAction?.value === "EMAIL"
+      (action) => action.notiAction?.value === "EMAIL",
     );
 
     if (emailActions.length > 0) {
@@ -677,7 +681,7 @@ export const checkAndNotifyUpcomingActions = async (req, res, next) => {
           actionStartTime.setHours(hours, minutes, 0, 0);
 
           const minutesUntilStart = Math.round(
-            (actionStartTime - now) / (60 * 1000)
+            (actionStartTime - now) / (60 * 1000),
           );
 
           const emailContent = `เรียน คุณ${action.user.firstName}\n\n

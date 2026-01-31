@@ -58,6 +58,7 @@ model Action {
   userId    String?
   tempUser TempUser? @relation(fields: [tempUserId], references: [id], onDelete: SetNull)
   tempUserId String?
+  description String?
   actionTypeId String
   actionType   Config      @relation("ActionType", fields: [actionTypeId], references: [id], onDelete: Cascade)
   locationId   String
