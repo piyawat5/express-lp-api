@@ -18,6 +18,7 @@ import configTypeRoute from "./configType.route.js";
 import actionStatusRoute from "./actionStatus.route.js";
 import inviteStatusRoute from "./inviteStatus.route.js";
 import notiActionRoute from "./notiAction.route.js";
+import favoriteRoute from "./favorite.route.js";
 import scheduleRepeatTypeRoute from "./scheduleRepeatType.route.js";
 
 // ใช้ memory storage สำหรับ multer (เก็บไว้ใน memory ก่อนส่งไป Cloudinary)
@@ -46,6 +47,7 @@ router.post("/auth/login", login);
 router.post("/auth/verify", authen);
 
 router.use("/actions", actionRoute);
+router.use("/favorites", favoriteRoute);
 
 router.use("/temp-users", tempUserRoute);
 
@@ -63,7 +65,7 @@ router.post(
   "/multiple",
   verifyToken,
   upload.array("images", 10),
-  uploadMultipleImages
+  uploadMultipleImages,
 );
 
 export default router;

@@ -21,6 +21,7 @@ model User {
   lastName      String?
   avatar        String?
   password  String?
+  favorite Favorite[]
   role      UserRole @default(USER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -63,6 +64,7 @@ model Action {
   actionType   Config      @relation("ActionType", fields: [actionTypeId], references: [id], onDelete: Cascade)
   locationId   String
   location     Config     @relation("ActionLocation", fields: [locationId], references: [id], onDelete: Cascade)
+  favorite Favorite[]
   startDate DateTime?
   endDate   DateTime?
   startTime String?
@@ -77,6 +79,20 @@ model Action {
   updatedAt DateTime @updatedAt
  scheduleRepeat   ScheduleRepeat?
 }
+
+   model Favorite {
+     id        String   @id @default(uuid())
+     user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+     userId    String
+     action    Action   @relation(fields: [actionId], references: [id], onDelete: Cascade)
+     actionId  String
+     createdAt DateTime @default(now())
+     updatedAt DateTime @updatedAt
+
+     @@unique([userId, actionId])
+     @@index([userId])
+     @@index([actionId])
+   }
 
 model InviteUser {
   id        String   @id @default(uuid())

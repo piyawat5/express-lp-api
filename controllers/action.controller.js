@@ -717,3 +717,127 @@ export const checkAndNotifyUpcomingActions = async (req, res, next) => {
     return next(createError(500, err.message));
   }
 };
+
+// ดึงกิจกรรมที่กำลังดำเนินการอยู่ในขณะนี้
+export const getCurrentActions = async (req, res, next) => {
+  try {
+    const now = new Date();
+
+    // กำหนดวันที่ปัจจุบัน (00:00:00)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // กำหนดวันพรุ่งนี้ (00:00:00)
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // ดึง actions ที่เริ่มในวันนี้หรือก่อนหน้านี้ และยังไม่จบ (ไม่รวม scheduleRepeat)
+    const actions = await prisma.action.findMany({
+      where: {
+        AND: [
+          {
+            startDate: {
+              lte: now, // เริ่มก่อนหรือเท่ากับเวลาปัจจุบัน
+            },
+          },
+          {
+            OR: [
+              {
+                // กรณีมี endDate
+                endDate: {
+                  gte: today, // จบหลังหรือเท่ากับวันนี้
+                },
+              },
+              {
+                // กรณีไม่มี endDate (ใช้ startDate แทน)
+                endDate: null,
+                startDate: {
+                  gte: today,
+                  lt: tomorrow,
+                },
+              },
+            ],
+          },
+          {
+            scheduleRepeat: null, // ไม่รวม scheduleRepeat
+          },
+        ],
+      },
+      include: {
+        user: true,
+        tempUser: true,
+        actionType: {
+          include: {
+            configType: true,
+          },
+        },
+        location: {
+          include: {
+            configType: true,
+          },
+        },
+        inviteUser: {
+          include: {
+            user: true,
+            tempUser: true,
+            inviteStatus: true,
+          },
+        },
+        attachfile: true,
+        notiAction: true,
+        actionStatus: true,
+        scheduleRepeat: {
+          include: {
+            scheduleRepeatType: true,
+          },
+        },
+      },
+      orderBy: {
+        startDate: "asc",
+      },
+    });
+
+    // กรองเฉพาะ actions ที่กำลังดำเนินการ (เช็คเวลา)
+    const currentActions = actions.filter((action) => {
+      // ถ้าไม่มี startTime หรือ endTime ให้ถือว่ากิจกรรมทั้งวัน
+      if (!action.startTime || !action.endTime) {
+        // เช็คว่าวันนี้อยู่ระหว่าง startDate และ endDate หรือไม่
+        const startDate = new Date(action.startDate);
+        startDate.setHours(0, 0, 0, 0);
+
+        const endDate = action.endDate
+          ? new Date(action.endDate)
+          : new Date(action.startDate);
+        endDate.setHours(23, 59, 59, 999);
+
+        return now >= startDate && now <= endDate;
+      }
+
+      // แปลง startTime และ endTime เป็น Date object
+      const [startHours, startMinutes] = action.startTime
+        .split(":")
+        .map(Number);
+      const [endHours, endMinutes] = action.endTime.split(":").map(Number);
+
+      const actionStartTime = new Date(action.startDate);
+      actionStartTime.setHours(startHours, startMinutes, 0, 0);
+
+      // ถ้ามี endDate ให้ใช้ endDate, ถ้าไม่มีให้ใช้ startDate
+      const actionEndDateTime = action.endDate
+        ? new Date(action.endDate)
+        : new Date(action.startDate);
+      actionEndDateTime.setHours(endHours, endMinutes, 0, 0);
+
+      // เช็คว่าเวลาปัจจุบันอยู่ระหว่าง start และ end หรือไม่
+      return now >= actionStartTime && now <= actionEndDateTime;
+    });
+
+    res.json({
+      data: currentActions,
+      count: currentActions.length,
+      currentTime: now,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
