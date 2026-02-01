@@ -841,3 +841,71 @@ export const getCurrentActions = async (req, res, next) => {
     next(err);
   }
 };
+
+// ดึงกิจกรรม 5 รายการล่าสุดของ user
+export const getRecentActions = async (req, res, next) => {
+  try {
+    const { userId, tempUserId, limit = 5 } = req.query;
+
+    // ต้องระบุ userId หรือ tempUserId อย่างน้อย 1 อัน
+    if (!userId && !tempUserId) {
+      return next(createError(400, "กรุณาระบุ userId หรือ tempUserId"));
+    }
+
+    const whereClause = {};
+
+    // Filter ตาม userId หรือ tempUserId
+    if (userId) {
+      whereClause.userId = userId;
+    }
+    if (tempUserId) {
+      whereClause.tempUserId = tempUserId;
+    }
+
+    const actions = await prisma.action.findMany({
+      where: whereClause,
+      include: {
+        user: true,
+        tempUser: true,
+        actionType: {
+          include: {
+            configType: true,
+          },
+        },
+        location: {
+          include: {
+            configType: true,
+          },
+        },
+        inviteUser: {
+          include: {
+            user: true,
+            tempUser: true,
+            inviteStatus: true,
+          },
+        },
+        attachfile: true,
+        notiAction: true,
+        actionStatus: true,
+        scheduleRepeat: {
+          include: {
+            scheduleRepeatType: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc", // เรียงจากล่าสุด
+      },
+      take: parseInt(limit), // จำกัดจำนวน (default 5)
+    });
+
+    res.status(200).json({
+      data: actions,
+      count: actions.length,
+      limit: parseInt(limit),
+      message: actions.length === 0 ? "ไม่พบกิจกรรม" : "พบกิจกรรม",
+    });
+  } catch (err) {
+    next(err);
+  }
+};

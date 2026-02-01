@@ -9,6 +9,7 @@ import {
   checkAndNotifyDailyActions,
   checkAndNotifyUpcomingActions,
   getCurrentActions,
+  getRecentActions,
 } from "../controllers/action.controller.js";
 
 const router = express.Router();
@@ -16,6 +17,7 @@ router.get("/notification/today", checkAndNotifyDailyActions);
 router.get("/notification/upcoming", checkAndNotifyUpcomingActions);
 router.post("/test-email", testMail);
 router.get("/current", getCurrentActions);
+router.get("/recent", getRecentActions);
 
 router.get("/", getActions);
 router.get("/:id", getActionById);
