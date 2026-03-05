@@ -10,6 +10,7 @@ import {
   checkAndNotifyUpcomingActions,
   getCurrentActions,
   getRecentActions,
+  copyActions,
 } from "../controllers/action.controller.js";
 
 const router = express.Router();
@@ -21,6 +22,7 @@ router.get("/recent", getRecentActions);
 
 router.get("/", getActions);
 router.get("/:id", getActionById);
+router.post("/copy", copyActions);
 router.post("/", createAction);
 router.put("/:id", updateAction);
 router.delete("/:id", deleteAction);

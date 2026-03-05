@@ -20,6 +20,7 @@ import inviteStatusRoute from "./inviteStatus.route.js";
 import notiActionRoute from "./notiAction.route.js";
 import favoriteRoute from "./favorite.route.js";
 import scheduleRepeatTypeRoute from "./scheduleRepeatType.route.js";
+import chatbotRoute from "./chatbot.route.js";
 
 // ใช้ memory storage สำหรับ multer (เก็บไว้ใน memory ก่อนส่งไป Cloudinary)
 const storage = multer.memoryStorage();
@@ -48,6 +49,7 @@ router.post("/auth/verify", authen);
 
 router.use("/actions", actionRoute);
 router.use("/favorites", favoriteRoute);
+router.use("/chatbot", chatbotRoute);
 
 router.use("/temp-users", tempUserRoute);
 

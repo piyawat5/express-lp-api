@@ -909,3 +909,450 @@ export const getRecentActions = async (req, res, next) => {
     next(err);
   }
 };
+
+export const copyActions = async (req, res, next) => {
+  try {
+    const { actions } = req.body;
+
+    // Validate input
+    if (!actions || !Array.isArray(actions) || actions.length === 0) {
+      return next(
+        createError(400, "กรุณาระบุ actions ที่ต้องการ copy (array)"),
+      );
+    }
+
+    // รวบรวม scheduleRepeatTypeIds ทั้งหมดที่ต้องใช้
+    const scheduleRepeatTypeIds = [
+      ...new Set(
+        actions
+          .filter((a) => a.scheduleRepeat?.scheduleRepeatTypeId)
+          .map((a) => a.scheduleRepeat.scheduleRepeatTypeId),
+      ),
+    ];
+
+    // Query scheduleRepeatTypes ทั้งหมดพร้อมกัน (1 query)
+    const scheduleRepeatTypes = {};
+    if (scheduleRepeatTypeIds.length > 0) {
+      const types = await prisma.scheduleRepeatType.findMany({
+        where: {
+          id: {
+            in: scheduleRepeatTypeIds,
+          },
+        },
+      });
+      types.forEach((type) => {
+        scheduleRepeatTypes[type.id] = type;
+      });
+    }
+
+    // ดึง userId/tempUserId ที่ไม่ซ้ำกัน
+    const userIds = [
+      ...new Set(actions.filter((a) => a.userId).map((a) => a.userId)),
+    ];
+    const tempUserIds = [
+      ...new Set(actions.filter((a) => a.tempUserId).map((a) => a.tempUserId)),
+    ];
+
+    // ดึง existing actions ของ users เหล่านี้ทั้งหมดมาเลย (1-2 queries แทน N queries)
+    const existingActionsMap = {};
+
+    if (userIds.length > 0) {
+      const existingUserActions = await prisma.action.findMany({
+        where: {
+          userId: {
+            in: userIds,
+          },
+        },
+        include: {
+          scheduleRepeat: {
+            include: {
+              scheduleRepeatType: true,
+            },
+          },
+        },
+      });
+      userIds.forEach((userId) => {
+        existingActionsMap[`user_${userId}`] = existingUserActions.filter(
+          (a) => a.userId === userId,
+        );
+      });
+    }
+
+    if (tempUserIds.length > 0) {
+      const existingTempUserActions = await prisma.action.findMany({
+        where: {
+          tempUserId: {
+            in: tempUserIds,
+          },
+        },
+        include: {
+          scheduleRepeat: {
+            include: {
+              scheduleRepeatType: true,
+            },
+          },
+        },
+      });
+      tempUserIds.forEach((tempUserId) => {
+        existingActionsMap[`tempUser_${tempUserId}`] =
+          existingTempUserActions.filter((a) => a.tempUserId === tempUserId);
+      });
+    }
+
+    // เก็บข้อมูลของแต่ละ action ที่จะสร้าง
+    const actionsToCreate = [];
+    const conflictDetails = [];
+
+    // Loop เช็คทุก action
+    for (let i = 0; i < actions.length; i++) {
+      const actionData = actions[i];
+
+      // Validate required fields
+      if (
+        !actionData.actionTypeId ||
+        !actionData.locationId ||
+        !actionData.actionStatusId
+      ) {
+        return next(
+          createError(
+            400,
+            `Action ลำดับที่ ${i + 1}: กรุณาระบุ actionTypeId, locationId และ actionStatusId`,
+          ),
+        );
+      }
+
+      // ต้องมี userId หรือ tempUserId อย่างใดอย่างหนึ่ง
+      if (!actionData.userId && !actionData.tempUserId) {
+        return next(
+          createError(
+            400,
+            `Action ลำดับที่ ${i + 1}: กรุณาระบุ userId หรือ tempUserId`,
+          ),
+        );
+      }
+
+      // ห้ามมีทั้ง userId และ tempUserId
+      if (actionData.userId && actionData.tempUserId) {
+        return next(
+          createError(
+            400,
+            `Action ลำดับที่ ${i + 1}: ไม่สามารถระบุทั้ง userId และ tempUserId พร้อมกัน`,
+          ),
+        );
+      }
+
+      // Validate scheduleRepeat
+      if (actionData.scheduleRepeat) {
+        if (!actionData.scheduleRepeat.scheduleRepeatTypeId) {
+          return next(
+            createError(
+              400,
+              `Action ลำดับที่ ${i + 1}: กรุณาระบุ scheduleRepeatTypeId ใน scheduleRepeat`,
+            ),
+          );
+        }
+
+        // ใช้ข้อมูลที่ query มาแล้ว
+        const scheduleRepeatType =
+          scheduleRepeatTypes[actionData.scheduleRepeat.scheduleRepeatTypeId];
+        if (scheduleRepeatType) {
+          actionData.scheduleRepeat.scheduleRepeatType = scheduleRepeatType;
+        }
+      } else {
+        // Action ครั้งเดียวต้องมี startDate
+        if (!actionData.startDate) {
+          return next(
+            createError(400, `Action ลำดับที่ ${i + 1}: กรุณาระบุ startDate`),
+          );
+        }
+      }
+
+      // เช็คเวลาซ้อนกันโดยใช้ existing actions ที่ query มาแล้ว
+      const targetUserId = actionData.userId || actionData.tempUserId;
+      const userKey = actionData.userId
+        ? `user_${actionData.userId}`
+        : `tempUser_${actionData.tempUserId}`;
+      const existingActions = existingActionsMap[userKey] || [];
+
+      // เช็คเวลาซ้อนกันแบบไม่ต้อง query (ใช้ข้อมูลที่มีแล้ว)
+      const hasOverlap = checkTimeOverlapInMemory(actionData, existingActions);
+
+      if (hasOverlap) {
+        const dateInfo = actionData.scheduleRepeat
+          ? `รูปแบบ: ${actionData.scheduleRepeat.scheduleRepeatType?.name || "ทำซ้ำ"}`
+          : `วันที่: ${actionData.startDate}${actionData.endDate && actionData.endDate !== actionData.startDate ? ` ถึง ${actionData.endDate}` : ""}`;
+
+        const timeInfo = actionData.scheduleRepeat
+          ? `เวลา: ${actionData.scheduleRepeat.timeStart} - ${actionData.scheduleRepeat.timeEnd}`
+          : `เวลา: ${actionData.startTime || "ไม่ระบุ"} - ${actionData.endTime || "ไม่ระบุ"}`;
+
+        conflictDetails.push({
+          index: i + 1,
+          dateInfo,
+          timeInfo,
+        });
+      }
+
+      actionsToCreate.push(actionData);
+    }
+
+    // ถ้ามี action ใดอันหนึ่งที่ซ้ำ ให้ reject ทั้งหมด
+    if (conflictDetails.length > 0) {
+      const errorMessage = conflictDetails
+        .map(
+          (conflict) =>
+            `Action ลำดับที่ ${conflict.index}: ${conflict.dateInfo}, ${conflict.timeInfo}`,
+        )
+        .join("\n");
+
+      return next(
+        createError(400, `พบกิจกรรมที่มีเวลาซ้ำกัน:\n${errorMessage}`),
+      );
+    }
+
+    // ถ้าไม่มีซ้ำเลย ให้สร้างทั้งหมด
+    const createdActions = [];
+
+    for (const actionData of actionsToCreate) {
+      const action = await prisma.action.create({
+        data: {
+          userId: actionData.userId || null,
+          tempUserId: actionData.tempUserId || null,
+          actionTypeId: actionData.actionTypeId,
+          locationId: actionData.locationId,
+          startDate: actionData.startDate
+            ? new Date(actionData.startDate)
+            : null,
+          endDate: actionData.endDate ? new Date(actionData.endDate) : null,
+          startTime: actionData.startTime || null,
+          endTime: actionData.endTime || null,
+          notiActionId: actionData.notiActionId || null,
+          actionStatusId: actionData.actionStatusId,
+          description: actionData.description || null,
+          ...(actionData.scheduleRepeat && {
+            scheduleRepeat: {
+              create: {
+                scheduleRepeatTypeId:
+                  actionData.scheduleRepeat.scheduleRepeatTypeId,
+                month: actionData.scheduleRepeat.month || null,
+                date: actionData.scheduleRepeat.date || null,
+                day: actionData.scheduleRepeat.day || null,
+                timeStart: actionData.scheduleRepeat.timeStart || null,
+                timeEnd: actionData.scheduleRepeat.timeEnd || null,
+              },
+            },
+          }),
+          ...(actionData.inviteUsers &&
+            actionData.inviteUsers.length > 0 && {
+              inviteUser: {
+                create: actionData.inviteUsers.map((invite) => ({
+                  userId: invite.userId || null,
+                  tempUserId: invite.tempUserId || null,
+                  inviteStatusId: invite.inviteStatusId,
+                })),
+              },
+            }),
+          ...(actionData.attachfiles &&
+            actionData.attachfiles.length > 0 && {
+              attachfile: {
+                create: actionData.attachfiles.map((file) => ({
+                  fileUrl: file.fileUrl,
+                })),
+              },
+            }),
+        },
+        include: {
+          user: true,
+          tempUser: true,
+          actionType: true,
+          location: true,
+          inviteUser: {
+            include: {
+              user: true,
+              tempUser: true,
+              inviteStatus: true,
+            },
+          },
+          attachfile: true,
+          notiAction: true,
+          actionStatus: true,
+          scheduleRepeat: {
+            include: {
+              scheduleRepeatType: true,
+            },
+          },
+        },
+      });
+
+      createdActions.push(action);
+    }
+
+    res.status(201).json({
+      message: `สร้างกิจกรรมสำเร็จ ${createdActions.length} รายการ`,
+      data: createdActions,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * เช็คเวลาซ้อนกันโดยใช้ existing actions ที่มีอยู่แล้ว (ไม่ต้อง query)
+ */
+const checkTimeOverlapInMemory = (newAction, existingActions) => {
+  for (const existingAction of existingActions) {
+    // กรณีที่ 1: Action ใหม่เป็นแบบครั้งเดียว vs Action เดิมแบบครั้งเดียว
+    if (!newAction.scheduleRepeat && !existingAction.scheduleRepeat) {
+      if (isOneTimeOverlapMemory(newAction, existingAction)) {
+        return true;
+      }
+    }
+
+    // กรณีที่ 2: Action ใหม่เป็นแบบครั้งเดียว vs Action เดิมแบบทำซ้ำ
+    if (!newAction.scheduleRepeat && existingAction.scheduleRepeat) {
+      if (
+        isOneTimeVsRepeatOverlapMemory(newAction, existingAction.scheduleRepeat)
+      ) {
+        return true;
+      }
+    }
+
+    // กรณีที่ 3: Action ใหม่เป็นแบบทำซ้ำ vs Action เดิมแบบครั้งเดียว
+    if (newAction.scheduleRepeat && !existingAction.scheduleRepeat) {
+      if (
+        isOneTimeVsRepeatOverlapMemory(existingAction, newAction.scheduleRepeat)
+      ) {
+        return true;
+      }
+    }
+
+    // กรณีที่ 4: Action ใหม่เป็นแบบทำซ้ำ vs Action เดิมแบบทำซ้ำ
+    if (newAction.scheduleRepeat && existingAction.scheduleRepeat) {
+      if (
+        isRepeatVsRepeatOverlapMemory(
+          newAction.scheduleRepeat,
+          existingAction.scheduleRepeat,
+        )
+      ) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+};
+
+// Helper functions (copy from timeOverlap.js แต่รับ object แทน query)
+const isOneTimeOverlapMemory = (action1, action2) => {
+  const start1 = new Date(action1.startDate);
+  const end1 = action1.endDate ? new Date(action1.endDate) : start1;
+  const start2 = new Date(action2.startDate);
+  const end2 = action2.endDate ? new Date(action2.endDate) : start2;
+
+  if (start1 > end2 || start2 > end1) {
+    return false;
+  }
+
+  if (
+    !action1.startTime ||
+    !action1.endTime ||
+    !action2.startTime ||
+    !action2.endTime
+  ) {
+    return true;
+  }
+
+  const datetime1Start = combineDateAndTime(start1, action1.startTime);
+  const datetime1End = combineDateAndTime(end1, action1.endTime);
+  const datetime2Start = combineDateAndTime(start2, action2.startTime);
+  const datetime2End = combineDateAndTime(end2, action2.endTime);
+
+  return !(datetime1End <= datetime2Start || datetime2End <= datetime1Start);
+};
+
+const isOneTimeVsRepeatOverlapMemory = (oneTimeAction, repeat) => {
+  const repeatType = repeat.scheduleRepeatType?.name;
+  const startDate = new Date(oneTimeAction.startDate);
+  const endDate = oneTimeAction.endDate
+    ? new Date(oneTimeAction.endDate)
+    : startDate;
+
+  if (repeatType === "DAILY") {
+    if (
+      repeat.timeStart &&
+      repeat.timeEnd &&
+      oneTimeAction.startTime &&
+      oneTimeAction.endTime
+    ) {
+      let currentDate = new Date(startDate);
+      const end = new Date(endDate);
+
+      while (currentDate <= end) {
+        const datetime1Start = combineDateAndTime(
+          currentDate,
+          oneTimeAction.startTime,
+        );
+        const datetime1End = combineDateAndTime(
+          currentDate,
+          oneTimeAction.endTime,
+        );
+        const datetime2Start = combineDateAndTime(
+          currentDate,
+          repeat.timeStart,
+        );
+        const datetime2End = combineDateAndTime(currentDate, repeat.timeEnd);
+
+        if (
+          !(datetime1End <= datetime2Start || datetime2End <= datetime1Start)
+        ) {
+          return true;
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+      return false;
+    }
+    return true;
+  }
+
+  // เพิ่ม logic สำหรับ WEEKLY, MONTHLY, YEARLY ตามต้องการ
+  return false;
+};
+
+const isRepeatVsRepeatOverlapMemory = (repeat1, repeat2) => {
+  const type1 = repeat1.scheduleRepeatType?.name;
+  const type2 = repeat2.scheduleRepeatType?.name;
+
+  if (type1 === "DAILY" && type2 === "DAILY") {
+    if (
+      repeat1.timeStart &&
+      repeat1.timeEnd &&
+      repeat2.timeStart &&
+      repeat2.timeEnd
+    ) {
+      return isTimeOverlapMemory(
+        repeat1.timeStart,
+        repeat1.timeEnd,
+        repeat2.timeStart,
+        repeat2.timeEnd,
+      );
+    }
+    return true;
+  }
+
+  // เพิ่ม logic สำหรับ type อื่นๆ
+  return false;
+};
+
+const isTimeOverlapMemory = (start1, end1, start2, end2) => {
+  const toMinutes = (time) => {
+    const [hours, minutes] = time.split(":").map(Number);
+    return hours * 60 + minutes;
+  };
+
+  const start1Minutes = toMinutes(start1);
+  const end1Minutes = toMinutes(end1);
+  const start2Minutes = toMinutes(start2);
+  const end2Minutes = toMinutes(end2);
+
+  return !(end1Minutes <= start2Minutes || end2Minutes <= start1Minutes);
+};
