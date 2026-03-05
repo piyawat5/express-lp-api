@@ -11,8 +11,6 @@ const ai = new GoogleGenAI({
 
 export const getAnalysMissAction = async (req, res, next) => {
   try {
-    // const { message } = req.body;
-
     const LostActivity = "วิ่ง";
     const time = "06.00 am";
     const missingDays = 12;
@@ -24,12 +22,22 @@ export const getAnalysMissAction = async (req, res, next) => {
       contents: messageToAi,
     });
 
+    // ✅ Header สำคัญมาก — บอก browser ว่านี่คือ streaming
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Transfer-Encoding", "chunked");
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    // ✅ flush ทันทีก่อนเลย
+    res.flushHeaders();
 
     for await (const chunk of stream) {
       const text = chunk.text;
       if (text) {
-        res.write(text); // ส่งทีละ chunk
+        res.write(text);
+        // ✅ บังคับ flush ทุก chunk — สำคัญมาก!
+        if (res.flush) res.flush();
       }
     }
 
