@@ -17,33 +17,26 @@ export const getAnalysMissAction = async (req, res, next) => {
 
     const messageToAi = `ช่วยวิเคราะห์หน่อยครับว่าทำไมฉันถึงขาดกิจกรรม ${LostActivity} เวลา ${time} ถึง ${missingDays} วันในเดือนนี้ และควรจัดการตัวเองอย่างไร`;
 
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.flushHeaders();
+
     const stream = await ai.models.generateContentStream({
       model: "gemini-2.5-flash",
       contents: messageToAi,
     });
 
-    // ✅ Header สำคัญมาก — บอก browser ว่านี่คือ streaming
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.setHeader("Transfer-Encoding", "chunked");
-    res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
-
-    // ✅ flush ทันทีก่อนเลย
-    res.flushHeaders();
-
     for await (const chunk of stream) {
-      // ✅ ใช้ candidates แทน เพราะ chunk.text อาจไม่ work ทุก version
       const text = chunk.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-
-      console.log("chunk text:", text); // ดูว่ามาทีละก้อนไหม
-
       if (text) {
-        res.write(text);
-        if (res.flush) res.flush();
+        res.write(`data: ${JSON.stringify({ text })}\n\n`);
       }
     }
 
+    res.write("data: [DONE]\n\n");
     res.end();
   } catch (error) {
     console.error(error);
