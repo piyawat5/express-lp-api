@@ -33,10 +33,13 @@ export const getAnalysMissAction = async (req, res, next) => {
     res.flushHeaders();
 
     for await (const chunk of stream) {
-      const text = chunk.text;
+      // ✅ ใช้ candidates แทน เพราะ chunk.text อาจไม่ work ทุก version
+      const text = chunk.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+
+      console.log("chunk text:", text); // ดูว่ามาทีละก้อนไหม
+
       if (text) {
         res.write(text);
-        // ✅ บังคับ flush ทุก chunk — สำคัญมาก!
         if (res.flush) res.flush();
       }
     }
